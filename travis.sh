@@ -245,7 +245,7 @@ source /opt/ros/$ROS_DISTRO/setup.bash
 catkin config --install
 
 # For a command that doesn’t produce output for more than 10 minutes, prefix it with travis_wait
-my_travis_wait 30 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST
+my_travis_wait 60 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST
 
 travis_time_end  # catkin_build
 
@@ -253,9 +253,10 @@ if [ "$NOT_TEST_BUILD" != "true" ]; then
     travis_time_start catkin_run_tests
 
     source install/setup.bash;
-    rospack profile # force to update ROS_PACKAGE_PATH for rostest
+    rospack profile # force to update ROS_PACKAGE_PATH for rostest TODO: remove this line?
     # run_tests
-    catkin build --catkin-make-args run_tests --no-status
+    echo "Running Tests"
+    catkin build --no-status --catkin-make-args run_tests --
     catkin_test_results build || errorFunction
 
     travis_time_end  # catkin_run_tests
