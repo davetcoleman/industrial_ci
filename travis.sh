@@ -53,9 +53,6 @@ trap success SIGTERM  # So that this script won't terminate without verifying th
 # Building in 16.04 requires running this script in a docker container
 # The Dockerfile in this repository defines a Ubuntu 16.04 container
 if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
-  travis_time_start build_docker_image
-  docker build -t industrial-ci/xenial .ci_config
-  travis_time_end  # build_docker_image
 
   travis_time_start run_travissh_docker
   export DOWNSTREAM_REPO_NAME=${PWD##*/}
@@ -84,7 +81,8 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
       -e UPSTREAM_WORKSPACE \
       -e ROSINSTALL_FILENAME \
       -v $(pwd):/root/$DOWNSTREAM_REPO_NAME industrial-ci/xenial \
-      /bin/bash -c "cd /root/$DOWNSTREAM_REPO_NAME; source .ci_config/travis.sh;"
+      /bin/bash -c "cd /root/$DOWNSTREAM_REPO_NAME; source .ci_config/travis.sh;" \
+      davetcoleman/industrial_ci
   retval=$?
   if [ $retval -eq 0 ]; then HIT_ENDOFSCRIPT=true; success 0; else exit; fi  # Call  travis_time_end  run_travissh_docker
 fi
