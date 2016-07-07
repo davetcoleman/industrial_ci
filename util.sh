@@ -38,8 +38,7 @@ function travis_time_start {
     TRAVIS_START_TIME=$(date +%s%N)
     TRAVIS_TIME_ID=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1)
     TRAVIS_FOLD_NAME=$1
-    echo -e "\e[0Ktravis_fold:start:$TRAVIS_FOLD_NAME"
-    echo -e "\e[0Ktravis_time:start:$TRAVIS_TIME_ID\e[34m>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\e[0m"
+    echo -e "\e[0Ktravis_fold:start:$TRAVIS_FOLD_NAME \e[34m>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\e[0m"
 }
 
 #######################################
@@ -55,7 +54,7 @@ function travis_time_start {
 function travis_time_end {
     color_wrap=${2:-32}
 
-    if [ -z $TRAVIS_START_TIME ]; then echo '[travis_time_end] var TRAVIS_START_TIME is not set. You need to call `travis_time_start` in advance. Rerutning.'; return; fi
+    if [ -z $TRAVIS_START_TIME ]; then echo '[travis_time_end] var TRAVIS_START_TIME is not set. You need to call `travis_time_start` in advance. Returning.'; return; fi
     TRAVIS_END_TIME=$(date +%s%N)
     TIME_ELAPSED_SECONDS=$(( ($TRAVIS_END_TIME - $TRAVIS_START_TIME)/1000000000 ))
     echo -e "travis_time:end:$TRAVIS_TIME_ID:start=$TRAVIS_START_TIME,finish=$TRAVIS_END_TIME,duration=$(($TRAVIS_END_TIME - $TRAVIS_START_TIME))\e[0K"
@@ -79,8 +78,8 @@ function _end_fold_script {
     if [ $exit_code -eq "1" ]; then color_wrap=31; fi  # Red color
     if [ -z $TRAVIS_FOLD_NAME ]; then
         travis_time_end $color_wrap
-    else
-	echo "Previous Travis fold name not found. It might be either successful termination of the script, or wrong call. Skipping 'travis_time_end' anyway."
+    #else
+	#echo "Previous Travis fold name not found. It might be either successful termination of the script, or wrong call. Skipping 'travis_time_end' anyway."
     fi
 
     if [ $exit_code -eq "1" ]; then trap - ERR; fi  # Reset signal handler since the shell is about to exit.
@@ -100,7 +99,7 @@ function _end_fold_script {
 # Returns:
 #   (None)
 #######################################
-function error {
+function errorFunction {
     _end_fold_script 1 31
 }
 
@@ -117,7 +116,7 @@ function error {
 # Returns:
 #   (None)
 #######################################
-function success {
+function successFunction {
     _FUNC_MSG_PREFIX="[fuction success]"
     _exit_code=${1:-0}  # If 1st arg is not passed, set 0.
     HIT_ENDOFSCRIPT=${HIT_ENDOFSCRIPT:-false}
