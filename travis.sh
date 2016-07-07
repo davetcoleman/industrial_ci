@@ -62,7 +62,7 @@ fi
 if ! [ "$IN_DOCKER" ]; then
 
   # Pull first to allow us to hide console output
-  travis_run docker pull davetcoleman/industrial_ci
+  docker pull davetcoleman/industrial_ci > /dev/null
 
   # Start Docker container
   docker run \
@@ -123,13 +123,15 @@ travis_run rosdep update || while [ $ret_rosdep != 0 ]; do sleep 1; rosdep updat
 # Install any prerequisites or dependencies necessary to run build
 
 # Create workspace
-travis_run mkdir -p ~/ros/ws_$DOWNSTREAM_REPO_NAME/src && cd ~/ros/ws_$DOWNSTREAM_REPO_NAME/src
+travis_run mkdir -p ~/ros/ws_$DOWNSTREAM_REPO_NAME/src
+travis_run cd ~/ros/ws_$DOWNSTREAM_REPO_NAME/src
+
 case "$UPSTREAM_WORKSPACE" in
     debian)
         echo "Obtain deb binary for upstream packages."
         ;;
     file) # When UPSTREAM_WORKSPACE is file, the dependended packages that need to be built from source are downloaded based on $ROSINSTALL_FILENAME file.
-        wstool init .
+        travis_run wstool init .
         # Prioritize $ROSINSTALL_FILENAME.$ROS_DISTRO if it exists over $ROSINSTALL_FILENAME.
         if [ -e $CI_SOURCE_PATH/$ROSINSTALL_FILENAME.$ROS_DISTRO ]; then
             # install (maybe unreleased version) dependencies from source for specific ros version
@@ -149,10 +151,7 @@ esac
 if [ -e .rosinstall ]; then
     # ensure that the downstream is not in .rosinstall
     travis_run wstool rm $DOWNSTREAM_REPO_NAME || true
-    echo "Contents of rosinstall file:"
-    cat .rosinstall
-    echo ""
-    echo "Running wstool update"
+    travis_run cat .rosinstall
     travis_run wstool update
 fi
 
@@ -188,6 +187,7 @@ travis_run source /opt/ros/$ROS_DISTRO/setup.bash
 travis_run catkin config --install
 
 # For a command that doesn’t produce output for more than 10 minutes, prefix it with travis_wait
+echo "Running catkin build"
 my_travis_wait 60 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST
 
 if [ "$NOT_TEST_BUILD" != "true" ]; then

@@ -77,12 +77,12 @@ function _end_fold_script {
     exit_code=${1:--1}  # If 1st arg is not passed, set -1.
     color_wrap=${2:-32}
 
-    if [ $exit_code -eq "1" ]; then color_wrap=31; fi  # Red color
-    if [ -z $TRAVIS_FOLD_NAME ]; then
-        travis_time_end $color_wrap
+    #if [ $exit_code -eq "1" ]; then color_wrap=31; fi  # Red color
+    # if [ -z $TRAVIS_FOLD_NAME ]; then
+    #     travis_time_end $color_wrap
     #else
 	#echo "Previous Travis fold name not found. It might be either successful termination of the script, or wrong call. Skipping 'travis_time_end' anyway."
-    fi
+    #fi
 
     if [ $exit_code -eq "1" ]; then trap - ERR; fi  # Reset signal handler since the shell is about to exit.
     if [ $exit_code -ne "-1" ]; then exit $exit_code; fi
