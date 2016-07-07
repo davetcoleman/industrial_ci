@@ -87,7 +87,14 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
       -v $(pwd):/root/$DOWNSTREAM_REPO_NAME davetcoleman/industrial_ci \
       /bin/bash -c "cd /root/$DOWNSTREAM_REPO_NAME; source .ci_config/travis.sh;" \
   retval=$?
-  if [ $retval -eq 0 ]; then HIT_ENDOFSCRIPT=true; success 0; else exit; fi  # Call  travis_time_end  run_travissh_docker
+  travis_time_end # run_travissh_docker
+
+  if [ $retval -eq 0 ]; then
+      echo "return value was 0"
+      HIT_ENDOFSCRIPT=true;
+      success 0;
+  fi
+  exit
 fi
 
 travis_time_start init_travis_environment
@@ -197,8 +204,8 @@ fi
 ln -s $CI_SOURCE_PATH .
 
 # Disable metapackage
-echo "Disabling metapackages:"
-find -L . -name package.xml -print -exec ${CI_SOURCE_PATH}/$CI_PARENT_DIR/check_metapackage.py {} \; -a -exec bash -c 'touch `dirname ${1}`/CATKIN_IGNORE' funcname {} \;
+#echo "Disabling metapackages:"
+#find -L . -name package.xml -print -exec ${CI_SOURCE_PATH}/$CI_PARENT_DIR/check_metapackage.py {} \; -a -exec bash -c 'touch `dirname ${1}`/CATKIN_IGNORE' funcname {} \;
 
 # Save .rosinstall file of this tested downstream repo, only during the runtime on travis CI
 if [ ! -e .rosinstall ]; then
@@ -252,8 +259,9 @@ if [ "${_PKGS_DOWNSTREAM// }" == "" ]; then
     export _PKGS_DOWNSTREAM=$( [ "${BUILD_PKGS_WHITELIST// }" == "" ] && echo "$_TARGET_PKGS" || echo "$BUILD_PKGS_WHITELIST");
 fi
 catkin config --install
-#catkin build --no-status --summarize $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS
-catkin build --no-status
+
+# If you have a command that doesn’t produce output for more than 10 minutes, you can prefix it with travis_wait, a function that’s exported by Travis' build environment.
+travis_wait 30 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS
 
 travis_time_end  # catkin_build
 
@@ -267,6 +275,8 @@ if [ "$NOT_TEST_BUILD" != "true" ]; then
     catkin_test_results build || error
 
     travis_time_end  # catkin_run_tests
+else
+    echo "Skipping test build"
 fi
 
 travis_time_start after_script
@@ -292,3 +302,4 @@ pwd
 
 HIT_ENDOFSCRIPT=true
 success 0
+echo "Travis has finished"

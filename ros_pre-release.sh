@@ -29,18 +29,18 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 #
-## Author: Isaac I. Y. Saito, Mathias Lè´‰dtke
+## Author: Isaac I. Y. Saito, Mathias L·∏ã‰dtke
 
-set -e
-set -x
+#set -e
+#set -x
 source ${CI_SOURCE_PATH}/$CI_PARENT_DIR/util.sh
 
-# Environment vars.
+# Envirnnonment vars.
 if [ ! "$PRERELEASE_DOWNSTREAM_DEPTH" ]; then export PRERELEASE_DOWNSTREAM_DEPTH="0"; fi
 if [ ! "$PRERELEASE_REPONAME" ]; then PRERELEASE_REPONAME=$(echo $TRAVIS_REPO_SLUG | cut -d'/' -f 2); fi
 #echo "PRERELEASE_REPONAME = ${PRERELEASE_REPONAME}"  # This shouldn't be echoed since this would become a return value of this entire script.
 
-# File-global vars and 
+# File-global vars and
 RESULT_PRERELEASE=-1
 
 function install_ros() {
@@ -77,11 +77,11 @@ function run_ros_prerelease() {
     travis_time_start run_prerelease
     ./prerelease.sh;
     travis_time_end  # run_prerelease
-    
+
     travis_time_start show_testresult
     catkin_test_results --verbose && { echo 'ROS Prerelease Test went successful.'; RESULT_PRERELEASE=0; } || { RESULT_PRERELEASE=1; error; }
     travis_time_end  # show_testresult
-    
+
     cd $TRAVIS_BUILD_DIR  # cd back to the repository's home directory with travis
     pwd
 
