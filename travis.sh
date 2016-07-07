@@ -105,7 +105,7 @@ if [ ! "$UPSTREAM_WORKSPACE" ]; then
 fi
 
 # Set apt repo - this was already defined in OSRF image but we probably want shadow-fixed
-travis_run sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt/sources.list.d/ros-latest.list'
+sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt/sources.list.d/ros-latest.list'
 
 # Update the sources
 travis_run sudo apt-get -qq update || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; errorFunction)
