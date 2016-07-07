@@ -141,7 +141,8 @@ function travis_run() {
   echo -e "\e[0Ktravis_fold:start:command$TRAVIS_FOLD_COUNTER \e[34m$command\e[0m"
   $command # actually run command
   #echo -e "travis_fold:end:travis_run"
-  echo -e "\e[0Ktravis_fold:end:command$TRAVIS_FOLD_COUNTER \e[34m------\e[0m"
+  #echo -e "\e[0Ktravis_fold:end:command$TRAVIS_FOLD_COUNTER \e[34m----\e[0m"
+  echo -e "\e[0Ktravis_fold:end:command$TRAVIS_FOLD_COUNTER \e[0m"
 
   let "TRAVIS_FOLD_COUNTER += 1"
 }
