@@ -57,6 +57,11 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
 
   travis_time_start run_travissh_docker
   export DOWNSTREAM_REPO_NAME=${PWD##*/}
+
+  # Pull first to allow us to hide console output
+  docker pull davetcoleman/industrial_ci > /dev/null
+
+  # Start Docker container
   docker run \
       -e ROS_REPOSITORY_PATH \
       -e ROS_DISTRO \
@@ -75,7 +80,6 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
       -e ROS_PARALLEL_JOBS \
       -e ROS_PARALLEL_TEST_JOBS \
       -e ROS_PARALLEL_JOBS \
-      -e ROSWS \
       -e TARGET_PKGS \
       -e USE_DEBROS_DISTRO \
       -e UPSTREAM_WORKSPACE \
@@ -88,7 +92,7 @@ fi
 
 travis_time_start init_travis_environment
 # Define more env vars
-ROSWS=wstool
+set +x
 export DOWNSTREAM_REPO_NAME=${PWD##*/}
 if [ ! "$CATKIN_PARALLEL_JOBS" ]; then
     export CATKIN_PARALLEL_JOBS="-p4";
@@ -135,8 +139,10 @@ travis_time_end  # init_travis_environment
 
 travis_time_start setup_ros
 
-echo "Testing branch $TRAVIS_BRANCH of $DOWNSTREAM_REPO_NAME"
+# Set apt repo - this was already defined in OSRF image but we probably want shadow-fixed
+sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt/sources.list.d/ros-latest.list'
 
+# Update the sources
 sudo apt-get update -qq || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; error)
 
 # If more DEBs needed during preparation, define ADDITIONAL_DEBS variable where you list the name of DEB(S, delimitted by whitespace)
@@ -145,7 +151,7 @@ if [ "$ADDITIONAL_DEBS" ]; then
 fi
 
 # Setup rosdep
-sudo rosdep init
+#sudo rosdep init
 ret_rosdep=1
 rosdep update || while [ $ret_rosdep != 0 ]; do sleep 1; rosdep update && ret_rosdep=0 || echo "rosdep update failed"; done
 
@@ -164,33 +170,34 @@ debian)
     echo "Obtain deb binary for upstream packages."
     ;;
 file) # When UPSTREAM_WORKSPACE is file, the dependended packages that need to be built from source are downloaded based on $ROSINSTALL_FILENAME file.
-    $ROSWS init .
+    wstool init .
     # Prioritize $ROSINSTALL_FILENAME.$ROS_DISTRO if it exists over $ROSINSTALL_FILENAME.
     if [ -e $CI_SOURCE_PATH/$ROSINSTALL_FILENAME.$ROS_DISTRO ]; then
         # install (maybe unreleased version) dependencies from source for specific ros version
-        $ROSWS merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME.$ROS_DISTRO
+        wstool merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME.$ROS_DISTRO
     elif [ -e $CI_SOURCE_PATH/$ROSINSTALL_FILENAME ]; then
         # install (maybe unreleased version) dependencies from source
-        $ROSWS merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME
+        wstool merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME
     fi
     ;;
 http://* | https://*) # When UPSTREAM_WORKSPACE is an http url, use it directly
-    $ROSWS init .
-    $ROSWS merge $UPSTREAM_WORKSPACE
+    wstool init .
+    wstool merge $UPSTREAM_WORKSPACE
     ;;
 esac
 
 # download upstream packages into workspace
 if [ -e .rosinstall ]; then
     # ensure that the downstream is not in .rosinstall
-    $ROSWS rm $DOWNSTREAM_REPO_NAME || true
-    $ROSWS update
+    wstool rm $DOWNSTREAM_REPO_NAME || true
+    wstool update
 fi
 
 # CI_SOURCE_PATH is the path of the downstream repository that we are testing. Link it to the catkin workspace
 ln -s $CI_SOURCE_PATH .
 
 # Disable metapackage
+echo "Disabling metapackages:"
 find -L . -name package.xml -print -exec ${CI_SOURCE_PATH}/$CI_PARENT_DIR/check_metapackage.py {} \; -a -exec bash -c 'touch `dirname ${1}`/CATKIN_IGNORE' funcname {} \;
 
 # Save .rosinstall file of this tested downstream repo, only during the runtime on travis CI
@@ -204,6 +211,7 @@ travis_time_start before_script
 
 ## BEGIN: travis' before_script:
 # Use this to prepare your build for testing e.g. copy database configurations, environment variables, etc.
+set +x
 source /opt/ros/$ROS_DISTRO/setup.bash # re-source setup.bash for setting environmet vairable for package installed via rosdep
 if [ "${BEFORE_SCRIPT// }" != "" ]; then sh -c "${BEFORE_SCRIPT}"; fi
 
@@ -230,20 +238,29 @@ fi
 
 travis_time_start catkin_build
 
+cd ~/ros/ws_$DOWNSTREAM_REPO_NAME/
+
 ## BEGIN: travis' script: # All commands must exit with code 0 on success. Anything else is considered failure.
+set +x
 source /opt/ros/$ROS_DISTRO/setup.bash # re-source setup.bash for setting environmet vairable for package installed via rosdep
 
-# for catkin
-if [ "${_TARGET_PKGS// }" == "" ]; then export _TARGET_PKGS=`catkin_topological_order ${CI_SOURCE_PATH} --only-names`; fi  # `_TARGET_PKGS` (default: not set): If not set, the packages in the output of `catkin_topological_order` from the source space of your repo are to be set. This is also used to fill `PKGS_DOWNSTREAM` if it is not set.
-if [ "${_PKGS_DOWNSTREAM// }" == "" ]; then export _PKGS_DOWNSTREAM=$( [ "${BUILD_PKGS_WHITELIST// }" == "" ] && echo "$_TARGET_PKGS" || echo "$BUILD_PKGS_WHITELIST"); fi
+# Configure catkin
+if [ "${_TARGET_PKGS// }" == "" ]; then
+    export _TARGET_PKGS=`catkin_topological_order ${CI_SOURCE_PATH} --only-names`;
+fi  # `_TARGET_PKGS` (default: not set): If not set, the packages in the output of `catkin_topological_order` from the source space of your repo are to be set. This is also used to fill `PKGS_DOWNSTREAM` if it is not set.
+if [ "${_PKGS_DOWNSTREAM// }" == "" ]; then
+    export _PKGS_DOWNSTREAM=$( [ "${BUILD_PKGS_WHITELIST// }" == "" ] && echo "$_TARGET_PKGS" || echo "$BUILD_PKGS_WHITELIST");
+fi
 catkin config --install
-catkin build --interleave-ouput --limit-status-rate 0.01 $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS
+#catkin build --no-status --summarize $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS
+catkin build --no-status
 
 travis_time_end  # catkin_build
 
 if [ "$NOT_TEST_BUILD" != "true" ]; then
     travis_time_start catkin_run_tests
 
+    set +x
     source devel/setup.bash ;
     rospack profile # force to update ROS_PACKAGE_PATH for rostest
     catkin run_tests --no-deps --no-status $_PKGS_DOWNSTREAM $CATKIN_PARALLEL_TEST_JOBS --make-args $ROS_PARALLEL_TEST_JOBS --

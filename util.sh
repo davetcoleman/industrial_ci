@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Originally developed in JSK travis package https://github.com/jsk-ros-pkg/jsk_travis 
+# Originally developed in JSK travis package https://github.com/jsk-ros-pkg/jsk_travis
 
 # Software License Agreement (BSD License)
 #
@@ -35,13 +35,11 @@
 ## This is a script where the functions commonly used within the industrial_ci repo are defined.
 
 function travis_time_start {
-    set +x
     TRAVIS_START_TIME=$(date +%s%N)
     TRAVIS_TIME_ID=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1)
     TRAVIS_FOLD_NAME=$1
     echo -e "\e[0Ktravis_fold:start:$TRAVIS_FOLD_NAME"
     echo -e "\e[0Ktravis_time:start:$TRAVIS_TIME_ID\e[34m>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\e[0m"
-    set -x
 }
 
 #######################################
@@ -55,9 +53,8 @@ function travis_time_start {
 #   (None)
 #######################################
 function travis_time_end {
-    set +x
     color_wrap=${2:-32}
-    
+
     if [ -z $TRAVIS_START_TIME ]; then echo '[travis_time_end] var TRAVIS_START_TIME is not set. You need to call `travis_time_start` in advance. Rerutning.'; return; fi
     TRAVIS_END_TIME=$(date +%s%N)
     TIME_ELAPSED_SECONDS=$(( ($TRAVIS_END_TIME - $TRAVIS_START_TIME)/1000000000 ))
@@ -66,7 +63,6 @@ function travis_time_end {
     echo -e "\e[0K\e[${color_wrap}mFunction $TRAVIS_FOLD_NAME took $(( $TIME_ELAPSED_SECONDS / 60 )) min $(( $TIME_ELAPSED_SECONDS % 60 )) sec\e[0m"
 
     unset $TRAVIS_FOLD_NAME
-    set -x
 }
 
 #######################################
@@ -77,7 +73,6 @@ function travis_time_end {
 # * exits the process if non -1 value is passed to `exit_code`.
 #######################################
 function _end_fold_script {
-    set +x
     exit_code=${1:--1}  # If 1st arg is not passed, set -1.
     color_wrap=${2:-32}
 
@@ -88,9 +83,8 @@ function _end_fold_script {
 	echo "Previous Travis fold name not found. It might be either successful termination of the script, or wrong call. Skipping 'travis_time_end' anyway."
     fi
 
-    if [ $exit_code -eq "1" ]; then trap - ERR; fi  # Reset signal handler since the shell is about to exit. 
-    set -x
-    if [ $exit_code -ne "-1" ]; then exit $exit_code; fi     
+    if [ $exit_code -eq "1" ]; then trap - ERR; fi  # Reset signal handler since the shell is about to exit.
+    if [ $exit_code -ne "-1" ]; then exit $exit_code; fi
 }
 
 #######################################
