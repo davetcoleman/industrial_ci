@@ -2,7 +2,7 @@
 
 # Software License Agreement (BSD License)
 #
-# Copyright (c) 2015, Isaac I. Y. Saito
+# Copyright (c) 2015, Isaac I. Y. Saito, Dave Coleman
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -68,8 +68,6 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
       -e ADDITIONAL_DEBS \
       -e BEFORE_SCRIPT \
       -e BUILD_PKGS \
-      -e CATKIN_PARALLEL_JOBS \
-      -e CATKIN_PARALLEL_TEST_JOBS \
       -e CI_PARENT_DIR \
       -e NOT_TEST_BUILD \
       -e NOT_TEST_INSTALL \
@@ -77,9 +75,6 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
       -e PRERELEASE_DOWNSTREAM_DEPTH \
       -e PRERELEASE_REPONAME \
       -e PKGS_DOWNSTREAM \
-      -e ROS_PARALLEL_JOBS \
-      -e ROS_PARALLEL_TEST_JOBS \
-      -e ROS_PARALLEL_JOBS \
       -e TARGET_PKGS \
       -e USE_DEBROS_DISTRO \
       -e UPSTREAM_WORKSPACE \
@@ -101,18 +96,6 @@ travis_time_start init_travis_environment
 # Define more env vars
 set +x
 export DOWNSTREAM_REPO_NAME=${PWD##*/}
-if [ ! "$CATKIN_PARALLEL_JOBS" ]; then
-    export CATKIN_PARALLEL_JOBS="-p4";
-fi
-if [ ! "$CATKIN_PARALLEL_TEST_JOBS" ]; then
-    export CATKIN_PARALLEL_TEST_JOBS="$CATKIN_PARALLEL_JOBS";
-fi
-if [ ! "$ROS_PARALLEL_JOBS" ]; then
-    export ROS_PARALLEL_JOBS="-j8";
-fi
-if [ ! "$ROS_PARALLEL_TEST_JOBS" ]; then
-    export ROS_PARALLEL_TEST_JOBS="$ROS_PARALLEL_JOBS";
-fi
 # If not specified, use ROS Shadow repository http://wiki.ros.org/ShadowRepository
 if [ ! "$ROS_REPOSITORY_PATH" ]; then
     export ROS_REPOSITORY_PATH="http://packages.ros.org/ros-shadow-fixed/ubuntu";
@@ -150,11 +133,11 @@ travis_time_start setup_ros
 sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt/sources.list.d/ros-latest.list'
 
 # Update the sources
-sudo apt-get update -qq || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; error)
+sudo apt-get -qq update || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; error)
 
 # If more DEBs needed during preparation, define ADDITIONAL_DEBS variable where you list the name of DEB(S, delimitted by whitespace)
 if [ "$ADDITIONAL_DEBS" ]; then
-    sudo apt-get install -q -qq -y $ADDITIONAL_DEBS;
+    sudo apt-get -qq install -q -y $ADDITIONAL_DEBS;
 fi
 
 # Setup rosdep
@@ -261,7 +244,7 @@ fi
 catkin config --install
 
 # If you have a command that doesn’t produce output for more than 10 minutes, you can prefix it with travis_wait, a function that’s exported by Travis' build environment.
-travis_wait 30 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS
+my_travis_wait 30 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST
 
 travis_time_end  # catkin_build
 
@@ -271,7 +254,7 @@ if [ "$NOT_TEST_BUILD" != "true" ]; then
     set +x
     source devel/setup.bash ;
     rospack profile # force to update ROS_PACKAGE_PATH for rostest
-    catkin run_tests --no-deps --no-status $_PKGS_DOWNSTREAM $CATKIN_PARALLEL_TEST_JOBS --make-args $ROS_PARALLEL_TEST_JOBS --
+    catkin run_tests --no-deps --no-status $_PKGS_DOWNSTREAM
     catkin_test_results build || error
 
     travis_time_end  # catkin_run_tests

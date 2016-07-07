@@ -2,9 +2,8 @@ FROM osrf/ros:kinetic-desktop
 MAINTAINER Dave Coleman dave@dav.ee
 
 # Install packages
-RUN apt-get update -qq &&\
-    #    apt-get install -qq -y \
-    apt-get install -y \
+RUN apt-get -qq update &&\
+    apt-get -qq install -y \
         git \
         sudo \
         wget \

@@ -131,3 +131,69 @@ function success {
     if [ $_exit_code -ne "-1" ] && [ $_exit_code -ne "0" ]; then echo "${_FUNC_MSG_PREFIX} error: arg _exit_code must be either empty, -1 or 0. Returning."; return; fi
     _end_fold_script $_exit_code
 }
+
+#######################################
+function my_travis_wait() {
+  local timeout=$1
+
+  if [[ $timeout =~ ^[0-9]+$ ]]; then
+    # looks like an integer, so we assume it's a timeout
+    shift
+  else
+    # default value
+    timeout=20
+  fi
+
+  my_travis_wait_impl $timeout "$@"
+}
+
+#######################################
+function my_travis_wait_impl() {
+  local timeout=$1
+  shift
+
+  local cmd="$@"
+  local log_file=my_travis_wait_$$.log
+
+  $cmd 2>&1 >$log_file &
+  local cmd_pid=$!
+
+  my_travis_jigger $! $timeout $cmd &
+  local jigger_pid=$!
+  local result
+
+  {
+    wait $cmd_pid 2>/dev/null
+    result=$?
+    ps -p$jigger_pid 2>&1>/dev/null && kill $jigger_pid
+  } || return 1
+
+  echo -e "\nThe command \"$cmd\" exited with $result."
+  echo -e "\n\033[32;1mLog:\033[0m\n"
+  cat $log_file
+
+  return $result
+}
+
+#######################################
+function my_travis_jigger() {
+  # helper method for travis_wait()
+  local cmd_pid=$1
+  shift
+  local timeout=$1 # in minutes
+  shift
+  local count=0
+
+
+  # clear the line
+  echo -e "\n"
+
+  while [ $count -lt $timeout ]; do
+    count=$(($count + 1))
+    echo -ne "Still running ($count of $timeout min): $@\r"
+    sleep 60
+  done
+
+  echo -e "\n\033[31;1mTimeout (${timeout} minutes) reached. Terminating \"$@\"\033[0m\n"
+  kill -9 $cmd_pid
+}
