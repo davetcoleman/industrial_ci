@@ -179,9 +179,12 @@ esac
 
 # download upstream packages into workspace
 if [ -e .rosinstall ]; then
-    echo "Running wstool update"
     # ensure that the downstream is not in .rosinstall
     wstool rm $DOWNSTREAM_REPO_NAME || true
+    echo "Contents of rosinstall file:"
+    cat .rosinstall
+    echo ""
+    echo "Running wstool update"
     wstool update
 fi
 
@@ -209,10 +212,13 @@ travis_time_end  # before_script
 
 travis_time_start rosdep_install
 
+# Install source-based package dependencies
+sudo rosdep install -r -y -q -n --from-paths . --ignore-src --rosdistro $ROS_DISTRO
+
 # Run "rosdep install" command. Avoid manifest.xml files if any.
-if [ -e ${CI_SOURCE_PATH}/$CI_PARENT_DIR/rosdep-install.sh ]; then
-    ${CI_SOURCE_PATH}/$CI_PARENT_DIR/rosdep-install.sh
-fi
+# if [ -e ${CI_SOURCE_PATH}/$CI_PARENT_DIR/rosdep-install.sh ]; then
+#     ${CI_SOURCE_PATH}/$CI_PARENT_DIR/rosdep-install.sh
+# fi
 
 travis_time_end  # rosdep_install
 
