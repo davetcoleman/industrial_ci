@@ -59,12 +59,9 @@ if [[ "$ROS_DISTRO" != "kinetic" ]]; then
 fi
 
 # The Dockerfile in this repository defines a Ubuntu 16.04 container with ROS pre-installed
-if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
-
-  travis_time_start run_travissh_docker
+if ! [ "$IN_DOCKER" ]; then
 
   # Pull first to allow us to hide console output
-  #docker pull davetcoleman/industrial_ci > /dev/null
   travis_run docker pull davetcoleman/industrial_ci
 
   # Start Docker container
@@ -88,75 +85,45 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
   retval=$?
 
   if [ $retval -eq 0 ]; then
-      echo "$ROS_DISTRO Docker container finished successfully"
+      echo "ROS $ROS_DISTRO Docker container finished successfully"
       HIT_ENDOFSCRIPT=true;
       successFunction 0;
   fi
-  echo "$ROS_DISTRO Docker container finished with errors"
+  echo "ROS $ROS_DISTRO Docker container finished with errors"
   exit # error
 fi
 
-travis_time_start init_travis_environment
-# Define more env vars
-export DOWNSTREAM_REPO_NAME=${PWD##*/}
-# If not specified, use ROS Shadow repository http://wiki.ros.org/ShadowRepository
-if [ ! "$ROS_REPOSITORY_PATH" ]; then
+# Export env variables
+if [ ! "$ROS_REPOSITORY_PATH" ]; then # If not specified, use ROS Shadow repository http://wiki.ros.org/ShadowRepository
     export ROS_REPOSITORY_PATH="http://packages.ros.org/ros-shadow-fixed/ubuntu";
 fi
-# .rosintall file name
-if [ ! "$ROSINSTALL_FILENAME" ]; then
+if [ ! "$ROSINSTALL_FILENAME" ]; then # .rosintall file name
     export ROSINSTALL_FILENAME=".travis.rosinstall";
 fi
-# For apt key stores
-if [ ! "$APTKEY_STORE_HTTPS" ]; then
-    export APTKEY_STORE_HTTPS="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key";
-fi
-# Export a variable for SKS URL for break-testing purpose.
-if [ ! "$APTKEY_STORE_SKS" ]; then
-    export APTKEY_STORE_SKS="hkp://ha.pool.sks-keyservers.net";
-fi
-if [ ! "$HASHKEY_SKS" ]; then
-    export HASHKEY_SKS="0xB01FA116";
-fi
-# if [ "$USE_DEB" ]; then  # USE_DEB is deprecated. See https://github.com/ros-industrial/industrial_ci/pull/47#discussion_r64882878 for the discussion.
-#     if [ "$USE_DEB" != "true" ]; then
-#         export UPSTREAM_WORKSPACE="file";
-#     else
-#         export UPSTREAM_WORKSPACE="debian";
-#     fi
-# fi
 if [ ! "$UPSTREAM_WORKSPACE" ]; then
     export UPSTREAM_WORKSPACE="debian";
 fi
 
-travis_time_end  # init_travis_environment
-
-travis_time_start setup_ros
-
 # Set apt repo - this was already defined in OSRF image but we probably want shadow-fixed
-sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt/sources.list.d/ros-latest.list'
+travis_run sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt/sources.list.d/ros-latest.list'
 
 # Update the sources
-sudo apt-get -qq update || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; errorFunction)
+travis_run sudo apt-get -qq update || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; errorFunction)
 
 # If more DEBs needed during preparation, define ADDITIONAL_DEBS variable where you list the name of DEB(S, delimitted by whitespace)
 if [ "$ADDITIONAL_DEBS" ]; then
-    sudo apt-get -qq install -q -y $ADDITIONAL_DEBS;
+    travis_run sudo apt-get -qq install -q -y $ADDITIONAL_DEBS;
 fi
 
 # Setup rosdep
 #sudo rosdep init # already setup is base ROS Docker image
 ret_rosdep=1
-rosdep update || while [ $ret_rosdep != 0 ]; do sleep 1; rosdep update && ret_rosdep=0 || echo "rosdep update failed"; done
-
-travis_time_end  # setup_ros
+travis_run rosdep update || while [ $ret_rosdep != 0 ]; do sleep 1; rosdep update && ret_rosdep=0 || echo "rosdep update failed"; done
 
 # Install any prerequisites or dependencies necessary to run build
-travis_time_start setup_rosws
 
 # Create workspace
-mkdir -p ~/ros/ws_$DOWNSTREAM_REPO_NAME/src
-cd ~/ros/ws_$DOWNSTREAM_REPO_NAME/src
+travis_run mkdir -p ~/ros/ws_$DOWNSTREAM_REPO_NAME/src && cd ~/ros/ws_$DOWNSTREAM_REPO_NAME/src
 case "$UPSTREAM_WORKSPACE" in
     debian)
         echo "Obtain deb binary for upstream packages."
@@ -166,31 +133,31 @@ case "$UPSTREAM_WORKSPACE" in
         # Prioritize $ROSINSTALL_FILENAME.$ROS_DISTRO if it exists over $ROSINSTALL_FILENAME.
         if [ -e $CI_SOURCE_PATH/$ROSINSTALL_FILENAME.$ROS_DISTRO ]; then
             # install (maybe unreleased version) dependencies from source for specific ros version
-            wstool merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME.$ROS_DISTRO
+            travis_run wstool merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME.$ROS_DISTRO
         elif [ -e $CI_SOURCE_PATH/$ROSINSTALL_FILENAME ]; then
             # install (maybe unreleased version) dependencies from source
-            wstool merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME
+            travis_run wstool merge file://$CI_SOURCE_PATH/$ROSINSTALL_FILENAME
         fi
         ;;
     http://* | https://*) # When UPSTREAM_WORKSPACE is an http url, use it directly
-        wstool init .
-        wstool merge $UPSTREAM_WORKSPACE
+        travis_run wstool init .
+        travis_run wstool merge $UPSTREAM_WORKSPACE
         ;;
 esac
 
 # download upstream packages into workspace
 if [ -e .rosinstall ]; then
     # ensure that the downstream is not in .rosinstall
-    wstool rm $DOWNSTREAM_REPO_NAME || true
+    travis_run wstool rm $DOWNSTREAM_REPO_NAME || true
     echo "Contents of rosinstall file:"
     cat .rosinstall
     echo ""
     echo "Running wstool update"
-    wstool update
+    travis_run wstool update
 fi
 
 # CI_SOURCE_PATH is the path of the downstream repository that we are testing. Link it to the catkin workspace
-ln -s $CI_SOURCE_PATH .
+travis_run ln -s $CI_SOURCE_PATH .
 
 # Disable metapackage
 #echo "Disabling metapackages:"
@@ -201,88 +168,62 @@ ln -s $CI_SOURCE_PATH .
 #     echo "- git: {local-name: $DOWNSTREAM_REPO_NAME, uri: 'http://github.com/$TRAVIS_REPO_SLUG'}" >> .rosinstall
 # fi
 
-travis_time_end  # setup_rosws
-
 # Prepare your build for testing e.g. copy database configurations, environment variables, etc.
-travis_time_start before_script
 
-source /opt/ros/$ROS_DISTRO/setup.bash # re-source setup.bash for setting environmet vairable for package installed via rosdep
+travis_run source /opt/ros/$ROS_DISTRO/setup.bash # re-source setup.bash for setting environmet vairable for package installed via rosdep
+
+# Run before script
 if [ "${BEFORE_SCRIPT// }" != "" ]; then sh -c "${BEFORE_SCRIPT}"; fi
 
-travis_time_end  # before_script
-
-travis_time_start rosdep_install
-
 # Install source-based package dependencies
-sudo rosdep install -r -y -q -n --from-paths . --ignore-src --rosdistro $ROS_DISTRO
-
-# Run "rosdep install" command. Avoid manifest.xml files if any.
-# if [ -e ${CI_SOURCE_PATH}/$CI_PARENT_DIR/rosdep-install.sh ]; then
-#     ${CI_SOURCE_PATH}/$CI_PARENT_DIR/rosdep-install.sh
-# fi
-
-travis_time_end  # rosdep_install
-
-# Start prerelease, and once it finishes then finish this script too.
-# This block needs to be here (i.e. After rosdep is done) because catkin_test_results isn't available until up to this point.
-# travis_time_start prerelease_from_travis_sh
-# if [ "$PRERELEASE" == true ] && [ -e ${CI_SOURCE_PATH}/$CI_PARENT_DIR/ros_pre-release.sh ]; then
-#   source ${CI_SOURCE_PATH}/${CI_PARENT_DIR}/ros_pre-release.sh && run_ros_prerelease
-#   retval_prerelease=$?
-#   if [ $retval_prerelease -eq 0 ]; then HIT_ENDOFSCRIPT=true; successFunction 0; else errorFunction; fi  # Internally called travis_time_end for prerelease_from_travis_sh
-#   # With Prerelease option, we want to stop here without running the rest of the code.
-# fi
-# travis_time_end  # prerelease_from_travis_sh
-
-travis_time_start catkin_build
+travis_run sudo rosdep install -r -y -q -n --from-paths . --ignore-src --rosdistro $ROS_DISTRO
 
 # Change to base of workspace
-cd ~/ros/ws_$DOWNSTREAM_REPO_NAME/
+travis_run cd ~/ros/ws_$DOWNSTREAM_REPO_NAME/
 
 # re-source setup.bash for setting environmet vairable for package installed via rosdep
-source /opt/ros/$ROS_DISTRO/setup.bash
+travis_run source /opt/ros/$ROS_DISTRO/setup.bash
 
 # Configure catkin
-catkin config --install
+travis_run catkin config --install
 
 # For a command that doesn’t produce output for more than 10 minutes, prefix it with travis_wait
 my_travis_wait 60 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST
 
-travis_time_end  # catkin_build
-
 if [ "$NOT_TEST_BUILD" != "true" ]; then
-    travis_time_start catkin_run_tests
 
     source install/setup.bash;
-    rospack profile # force to update ROS_PACKAGE_PATH for rostest TODO: remove this line?
     # run_tests
-    echo "Running Tests"
-    catkin build --no-status --catkin-make-args run_tests --
-    catkin_test_results build || errorFunction
+    # catkin build --no-status --catkin-make-args run_tests --
+    # catkin_test_results build || errorFunction
 
-    travis_time_end  # catkin_run_tests
+    TEST_PKGS=$(catkin_topological_order $CI_SOURCE_PATH --only-names)
+    if [ -n "$TEST_PKGS" ]; then TEST_PKGS="--no-deps $TEST_PKGS"; fi
+    if [ "$ALLOW_TEST_FAILURE" != "true" ]; then ALLOW_TEST_FAILURE=false; fi
+    echo "Running tests for packages: '$TEST_PKGS'"
+
+    catkin build --no-status --summarize --make-args tests -- $TEST_PKGS
+    catkin run_tests --no-status --summarize $TEST_PKGS
+    catkin_test_results
+
 else
     echo "Skipping test build"
 fi
 
-travis_time_start after_script
-
-## BEGIN: travis' after_script
-PATH=/usr/local/bin:$PATH  # for installed catkin_test_results
-PYTHONPATH=/usr/local/lib/python2.7/dist-packages:$PYTHONPATH
-echo "Showing test results?"
-if [ "${ROS_LOG_DIR// }" == "" ]; then export ROS_LOG_DIR=~/.ros/test_results; fi # http://wiki.ros.org/ROS/EnvironmentVariables#ROS_LOG_DIR
-if [ -e $ROS_LOG_DIR ]; then
-    catkin_test_results --verbose --all $ROS_LOG_DIR || errorFunction;
-fi
-if [ -e ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ ]; then
-    catkin_test_results --verbose --all ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ || errorFunction;
-fi
-if [ -e ~/.ros/test_results/ ]; then
-    catkin_test_results --verbose --all ~/.ros/test_results/ || errorFunction;
-fi
-
-travis_time_end  # after_script
+# ## BEGIN: travis' after_script
+# PATH=/usr/local/bin:$PATH  # for installed catkin_test_results
+# PYTHONPATH=/usr/local/lib/python2.7/dist-packages:$PYTHONPATH
+# echo "Showing test results?"
+# if [ "${ROS_LOG_DIR// }" == "" ]; then export ROS_LOG_DIR=~/.ros/test_results; fi # http://wiki.ros.org/ROS/EnvironmentVariables#ROS_LOG_DIR
+# if [ -e $ROS_LOG_DIR ]; then
+#     catkin_test_results --verbose --all $ROS_LOG_DIR || errorFunction;
+# fi
+# if [ -e ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ ]; then
+#     catkin_test_results --verbose --all ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ || errorFunction;
+# fi
+# if [ -e ~/.ros/test_results/ ]; then
+#     catkin_test_results --verbose --all ~/.ros/test_results/ || errorFunction;
+# fi
 
 echo "Travis script has finished successfully"
 HIT_ENDOFSCRIPT=true
