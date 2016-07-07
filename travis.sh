@@ -37,8 +37,8 @@
 ##
 ## Variables that are not meant to be exposed externally from this script may be lead by underscore.
 
-set -e
-set -x
+#set -e
+#set -x
 
 # Define some env vars that need to come earlier than util.sh
 export CI_SOURCE_PATH=$(pwd)
@@ -113,9 +113,6 @@ if [ "$USE_DEB" ]; then  # USE_DEB is deprecated. See https://github.com/ros-ind
 fi
 if [ ! "$UPSTREAM_WORKSPACE" ]; then export UPSTREAM_WORKSPACE="debian"; fi
 
-git branch --all
-if [ "`git diff origin/master FETCH_HEAD $CI_PARENT_DIR`" != "" ] ; then DIFF=`git diff origin/master FETCH_HEAD $CI_PARENT_DIR | grep .*Subproject | sed s'@.*Subproject commit @@' | sed 'N;s/\n/.../'`; (cd $CI_PARENT_DIR/;git log --oneline --graph --left-right --first-parent --decorate $DIFF) | tee /tmp/$$-travis-diff.log; grep -c '<' /tmp/$$-travis-diff.log && exit 1; echo "ok"; fi
-
 travis_time_end  # init_travis_environment
 
 travis_time_start setup_ros
@@ -127,7 +124,7 @@ sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt
 # apt key acquisition. Since keyserver may often become accessible, backup method is added.
 sudo apt-key adv --keyserver $APTKEY_STORE_SKS --recv-key $HASHKEY_SKS || ((echo 'Fetching apt key from SKS keyserver somehow failed. Trying to get one from alternative.\n'; wget $APTKEY_STORE_HTTPS -O - | sudo apt-key add -) || (echo 'Fetching apt key by an alternative method failed too. Exiting since ROS cannot be installed.'; error))
 lsb_release -a
-sudo apt-get update || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; error)
+sudo apt-get update -qq || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; error)
 sudo apt-get -qq install -y python-catkin-tools python-rosdep python-wstool ros-$ROS_DISTRO-rosbash ros-$ROS_DISTRO-rospack
 # If more DEBs needed during preparation, define ADDITIONAL_DEBS variable where you list the name of DEB(S, delimitted by whitespace)
 if [ "$ADDITIONAL_DEBS" ]; then sudo apt-get install -q -qq -y $ADDITIONAL_DEBS;  fi
@@ -209,7 +206,6 @@ ln -s $CI_SOURCE_PATH .
 # Disable metapackage
 find -L . -name package.xml -print -exec ${CI_SOURCE_PATH}/$CI_PARENT_DIR/check_metapackage.py {} \; -a -exec bash -c 'touch `dirname ${1}`/CATKIN_IGNORE' funcname {} \;
 
-source /opt/ros/$ROS_DISTRO/setup.bash # ROS_PACKAGE_PATH is important for rosdep
 # Save .rosinstall file of this tested downstream repo, only during the runtime on travis CI
 if [ ! -e .rosinstall ]; then
     echo "- git: {local-name: $DOWNSTREAM_REPO_NAME, uri: 'http://github.com/$TRAVIS_REPO_SLUG'}" >> .rosinstall
@@ -258,7 +254,8 @@ source /opt/ros/$ROS_DISTRO/setup.bash # re-source setup.bash for setting enviro
 # for catkin
 if [ "${_TARGET_PKGS// }" == "" ]; then export _TARGET_PKGS=`catkin_topological_order ${CI_SOURCE_PATH} --only-names`; fi  # `_TARGET_PKGS` (default: not set): If not set, the packages in the output of `catkin_topological_order` from the source space of your repo are to be set. This is also used to fill `PKGS_DOWNSTREAM` if it is not set.
 if [ "${_PKGS_DOWNSTREAM// }" == "" ]; then export _PKGS_DOWNSTREAM=$( [ "${BUILD_PKGS_WHITELIST// }" == "" ] && echo "$_TARGET_PKGS" || echo "$BUILD_PKGS_WHITELIST"); fi
-if [ "$BUILDER" == catkin ]; then catkin build -i -v --summarize  --no-status $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS            ; fi
+catkin config --install
+if [ "$BUILDER" == catkin ]; then catkin build --summarize  --no-status $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS            ; fi
 
 travis_time_end  # catkin_build
 
@@ -275,51 +272,11 @@ if [ "$NOT_TEST_BUILD" != "true" ]; then
 
     if [ "$BUILDER" == catkin ]; then
         source devel/setup.bash ; rospack profile # force to update ROS_PACKAGE_PATH for rostest
-        catkin run_tests -iv --no-deps --no-status $_PKGS_DOWNSTREAM $CATKIN_PARALLEL_TEST_JOBS --make-args $ROS_PARALLEL_TEST_JOBS --
+        catkin run_tests --no-deps --no-status $_PKGS_DOWNSTREAM $CATKIN_PARALLEL_TEST_JOBS --make-args $ROS_PARALLEL_TEST_JOBS --
         catkin_test_results build || error
     fi
 
     travis_time_end  # catkin_run_tests
-fi
-
-if [ "$NOT_TEST_INSTALL" != "true" ]; then
-
-    travis_time_start catkin_install_build
-
-    # Test if the packages in the downstream repo build.
-    if [ "$BUILDER" == catkin ]; then
-        catkin clean --yes
-        catkin config --install
-        catkin build -i -v --summarize --no-status $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS
-        source install/setup.bash
-        rospack profile
-    fi
-
-    travis_time_end  # catkin_install_build
-    travis_time_start catkin_install_run_tests
-
-    export EXIT_STATUS=0
-    # Test if the unit tests in the packages in the downstream repo pass.
-    if [ "$BUILDER" == catkin ]; then
-      for pkg in $_PKGS_DOWNSTREAM; do
-        echo "[$pkg] Started testing..."
-        rostest_files=$(find install/share/$pkg -iname '*.test')
-        echo "[$pkg] Found $(echo $rostest_files | wc -w) tests."
-        for test_file in $rostest_files; do
-          echo "[$pkg] Testing $test_file"
-          rostest $test_file || export EXIT_STATUS=$?
-          if [ $? != 0 ]; then
-            echo -e "[$pkg] Testing again the failed test: $test_file.\e[31m>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\e[0m"
-            rostest --text $test_file
-            echo -e "[$pkg] Testing again the failed test: $test_file.\e[31m<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\e[0m"
-          fi
-        done
-      done
-      [ $EXIT_STATUS -eq 0 ] || error  # unless all tests pass, raise error
-    fi
-
-    travis_time_end  # catkin_install_run_tests
-
 fi
 
 travis_time_start after_script
