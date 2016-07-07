@@ -187,7 +187,7 @@ travis_run source /opt/ros/$ROS_DISTRO/setup.bash
 travis_run catkin config --install
 
 # For a command that doesn’t produce output for more than 10 minutes, prefix it with travis_wait
-echo "Running catkin build"
+echo "Running catkin build..."
 my_travis_wait 60 catkin build --no-status --summarize $BUILD_PKGS_WHITELIST
 
 if [ "$NOT_TEST_BUILD" != "true" ]; then
