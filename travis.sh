@@ -246,9 +246,10 @@ travis_time_end  # catkin_build
 if [ "$NOT_TEST_BUILD" != "true" ]; then
     travis_time_start catkin_run_tests
 
-    source devel/setup.bash;
-    #rospack profile # force to update ROS_PACKAGE_PATH for rostest
-    catkin run_tests --no-deps --no-status
+    source install/setup.bash;
+    rospack profile # force to update ROS_PACKAGE_PATH for rostest
+    # run_tests
+    catkin build --catkin-make-args run_tests --no-status
     catkin_test_results build || errorFunction
 
     travis_time_end  # catkin_run_tests
