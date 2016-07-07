@@ -63,7 +63,6 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
       -e ADDITIONAL_DEBS \
       -e BEFORE_SCRIPT \
       -e BUILD_PKGS \
-      -e BUILDER \
       -e CATKIN_PARALLEL_JOBS \
       -e CATKIN_PARALLEL_TEST_JOBS \
       -e CI_PARENT_DIR \
@@ -89,81 +88,70 @@ fi
 
 travis_time_start init_travis_environment
 # Define more env vars
-BUILDER=catkin
 ROSWS=wstool
 export DOWNSTREAM_REPO_NAME=${PWD##*/}
-if [ ! "$CATKIN_PARALLEL_JOBS" ]; then export CATKIN_PARALLEL_JOBS="-p4"; fi
-if [ ! "$CATKIN_PARALLEL_TEST_JOBS" ]; then export CATKIN_PARALLEL_TEST_JOBS="$CATKIN_PARALLEL_JOBS"; fi
-if [ ! "$ROS_PARALLEL_JOBS" ]; then export ROS_PARALLEL_JOBS="-j8"; fi
-if [ ! "$ROS_PARALLEL_TEST_JOBS" ]; then export ROS_PARALLEL_TEST_JOBS="$ROS_PARALLEL_JOBS"; fi
+if [ ! "$CATKIN_PARALLEL_JOBS" ]; then
+    export CATKIN_PARALLEL_JOBS="-p4";
+fi
+if [ ! "$CATKIN_PARALLEL_TEST_JOBS" ]; then
+    export CATKIN_PARALLEL_TEST_JOBS="$CATKIN_PARALLEL_JOBS";
+fi
+if [ ! "$ROS_PARALLEL_JOBS" ]; then
+    export ROS_PARALLEL_JOBS="-j8";
+fi
+if [ ! "$ROS_PARALLEL_TEST_JOBS" ]; then
+    export ROS_PARALLEL_TEST_JOBS="$ROS_PARALLEL_JOBS";
+fi
 # If not specified, use ROS Shadow repository http://wiki.ros.org/ShadowRepository
-if [ ! "$ROS_REPOSITORY_PATH" ]; then export ROS_REPOSITORY_PATH="http://packages.ros.org/ros-shadow-fixed/ubuntu"; fi
+if [ ! "$ROS_REPOSITORY_PATH" ]; then
+    export ROS_REPOSITORY_PATH="http://packages.ros.org/ros-shadow-fixed/ubuntu";
+fi
 # .rosintall file name
-if [ ! "$ROSINSTALL_FILENAME" ]; then export ROSINSTALL_FILENAME=".travis.rosinstall"; fi
+if [ ! "$ROSINSTALL_FILENAME" ]; then
+    export ROSINSTALL_FILENAME=".travis.rosinstall";
+fi
 # For apt key stores
-if [ ! "$APTKEY_STORE_HTTPS" ]; then export APTKEY_STORE_HTTPS="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key"; fi
-if [ ! "$APTKEY_STORE_SKS" ]; then export APTKEY_STORE_SKS="hkp://ha.pool.sks-keyservers.net"; fi  # Export a variable for SKS URL for break-testing purpose.
-if [ ! "$HASHKEY_SKS" ]; then export HASHKEY_SKS="0xB01FA116"; fi
+if [ ! "$APTKEY_STORE_HTTPS" ]; then
+    export APTKEY_STORE_HTTPS="https://raw.githubusercontent.com/ros/rosdistro/master/ros.key";
+fi
+if [ ! "$APTKEY_STORE_SKS" ]; then
+    export APTKEY_STORE_SKS="hkp://ha.pool.sks-keyservers.net";
+fi  # Export a variable for SKS URL for break-testing purpose.
+if [ ! "$HASHKEY_SKS" ]; then
+    export HASHKEY_SKS="0xB01FA116";
+fi
 if [ "$USE_DEB" ]; then  # USE_DEB is deprecated. See https://github.com/ros-industrial/industrial_ci/pull/47#discussion_r64882878 for the discussion.
-    if [ "$USE_DEB" != "true" ]; then export UPSTREAM_WORKSPACE="file";
-    else export UPSTREAM_WORKSPACE="debian";
+    if [ "$USE_DEB" != "true" ]; then
+        export UPSTREAM_WORKSPACE="file";
+    else
+        export UPSTREAM_WORKSPACE="debian";
     fi
 fi
-if [ ! "$UPSTREAM_WORKSPACE" ]; then export UPSTREAM_WORKSPACE="debian"; fi
+if [ ! "$UPSTREAM_WORKSPACE" ]; then
+    export UPSTREAM_WORKSPACE="debian";
+fi
 
 travis_time_end  # init_travis_environment
 
 travis_time_start setup_ros
 
 echo "Testing branch $TRAVIS_BRANCH of $DOWNSTREAM_REPO_NAME"
-# Set apt repo
-sudo -E sh -c 'echo "deb $ROS_REPOSITORY_PATH `lsb_release -cs` main" > /etc/apt/sources.list.d/ros-latest.list'
-# Common ROS install preparation
-# apt key acquisition. Since keyserver may often become accessible, backup method is added.
-sudo apt-key adv --keyserver $APTKEY_STORE_SKS --recv-key $HASHKEY_SKS || ((echo 'Fetching apt key from SKS keyserver somehow failed. Trying to get one from alternative.\n'; wget $APTKEY_STORE_HTTPS -O - | sudo apt-key add -) || (echo 'Fetching apt key by an alternative method failed too. Exiting since ROS cannot be installed.'; error))
-#lsb_release -a
+
 sudo apt-get update -qq || (echo "ERROR: apt server not responding. This is a rare situation, and usually just waiting for a while clears this. See https://github.com/ros-industrial/industrial_ci/pull/56 for more of the discussion"; error)
-sudo apt-get install -qq -y python-catkin-tools python-rosdep python-wstool ros-$ROS_DISTRO-rosbash ros-$ROS_DISTRO-rospack
+
 # If more DEBs needed during preparation, define ADDITIONAL_DEBS variable where you list the name of DEB(S, delimitted by whitespace)
-if [ "$ADDITIONAL_DEBS" ]; then sudo apt-get install -q -qq -y $ADDITIONAL_DEBS;  fi
-# MongoDB hack - I don't fully understand this but its for moveit_warehouse
-dpkg -s mongodb || echo "ok"; export HAVE_MONGO_DB=$?
-if [ $HAVE_MONGO_DB == 0 ]; then
-    sudo apt-get remove -qq -y mongodb mongodb-10gen || echo "ok"
-    sudo apt-get install -qq -y mongodb-clients mongodb-server -o Dpkg::Options::="--force-confdef" || echo "ok"
+if [ "$ADDITIONAL_DEBS" ]; then
+    sudo apt-get install -q -qq -y $ADDITIONAL_DEBS;
 fi
 
-travis_time_end  # setup_ros
-
-travis_time_start setup_rosdep
-
 # Setup rosdep
-pip --version
-rosdep --version
 sudo rosdep init
 ret_rosdep=1
 rosdep update || while [ $ret_rosdep != 0 ]; do sleep 1; rosdep update && ret_rosdep=0 || echo "rosdep update failed"; done
 
-travis_time_end  # setup_rosdep
-travis_time_start setup_catkin
-
-## BEGIN: travis' before_install: # Use this to prepare the system to install prerequisites or dependencies ##
-# https://github.com/ros/ros_comm/pull/641, https://github.com/jsk-ros-pkg/jsk_travis/pull/110
-sudo apt-get install -qq -y ros-$ROS_DISTRO-roslaunch
-(cd /opt/ros/$ROS_DISTRO/lib/python2.7/dist-packages; wget --no-check-certificate https://patch-diff.githubusercontent.com/raw/ros/ros_comm/pull/641.diff -O /tmp/641.diff; [ "$ROS_DISTRO" == "hydro" ] && sed -i s@items@iteritems@ /tmp/641.diff ; sudo patch -p4 < /tmp/641.diff)
-
-travis_time_end  # setup_catkin
+travis_time_end  # setup_ros
 
 travis_time_start check_version_ros
-
-# Check ROS tool's version
-echo -e "\e[0KROS tool's version"
-source /opt/ros/$ROS_DISTRO/setup.bash
-rosversion roslaunch
-rosversion rospack
-apt-cache show python-rospkg | grep '^Version:' | awk '{print $2}'
-
-travis_time_end  # check_version_ros
 
 travis_time_start setup_rosws
 
@@ -198,6 +186,7 @@ if [ -e .rosinstall ]; then
     $ROSWS rm $DOWNSTREAM_REPO_NAME || true
     $ROSWS update
 fi
+
 # CI_SOURCE_PATH is the path of the downstream repository that we are testing. Link it to the catkin workspace
 ln -s $CI_SOURCE_PATH .
 
@@ -213,7 +202,8 @@ travis_time_end  # setup_rosws
 
 travis_time_start before_script
 
-## BEGIN: travis' before_script: # Use this to prepare your build for testing e.g. copy database configurations, environment variables, etc.
+## BEGIN: travis' before_script:
+# Use this to prepare your build for testing e.g. copy database configurations, environment variables, etc.
 source /opt/ros/$ROS_DISTRO/setup.bash # re-source setup.bash for setting environmet vairable for package installed via rosdep
 if [ "${BEFORE_SCRIPT// }" != "" ]; then sh -c "${BEFORE_SCRIPT}"; fi
 
@@ -228,7 +218,7 @@ fi
 
 travis_time_end  # rosdep_install
 
-# Start prerelease, and once it finishs then finish this script too.
+# Start prerelease, and once it finishes then finish this script too.
 # This block needs to be here (i.e. After rosdep is done) because catkin_test_results isn't available until up to this point.
 travis_time_start prerelease_from_travis_sh
 if [ "$PRERELEASE" == true ] && [ -e ${CI_SOURCE_PATH}/$CI_PARENT_DIR/ros_pre-release.sh ]; then
@@ -238,41 +228,26 @@ if [ "$PRERELEASE" == true ] && [ -e ${CI_SOURCE_PATH}/$CI_PARENT_DIR/ros_pre-re
   # With Prerelease option, we want to stop here without running the rest of the code.
 fi
 
-travis_time_start wstool_info
-$ROSWS --version
-$ROSWS info -t .
-cd ../
-
-travis_time_end  # wstool_info
-
 travis_time_start catkin_build
 
 ## BEGIN: travis' script: # All commands must exit with code 0 on success. Anything else is considered failure.
 source /opt/ros/$ROS_DISTRO/setup.bash # re-source setup.bash for setting environmet vairable for package installed via rosdep
+
 # for catkin
 if [ "${_TARGET_PKGS// }" == "" ]; then export _TARGET_PKGS=`catkin_topological_order ${CI_SOURCE_PATH} --only-names`; fi  # `_TARGET_PKGS` (default: not set): If not set, the packages in the output of `catkin_topological_order` from the source space of your repo are to be set. This is also used to fill `PKGS_DOWNSTREAM` if it is not set.
 if [ "${_PKGS_DOWNSTREAM// }" == "" ]; then export _PKGS_DOWNSTREAM=$( [ "${BUILD_PKGS_WHITELIST// }" == "" ] && echo "$_TARGET_PKGS" || echo "$BUILD_PKGS_WHITELIST"); fi
 catkin config --install
-if [ "$BUILDER" == catkin ]; then catkin build --interleave-ouput --limit-status-rate 0.01 $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS            ; fi
+catkin build --interleave-ouput --limit-status-rate 0.01 $BUILD_PKGS_WHITELIST $CATKIN_PARALLEL_JOBS --make-args $ROS_PARALLEL_JOBS
 
 travis_time_end  # catkin_build
 
 if [ "$NOT_TEST_BUILD" != "true" ]; then
     travis_time_start catkin_run_tests
 
-    # Patches for rostest that are only available in newer codes.
-    # Some are already available via DEBs so that patches for them are not needed, but because EOLed distros (e.g. Hydro) where those patches are not released into may be still tested, all known patches are applied here.
-    if [ "$ROS_DISTRO" == "hydro" ]; then
-        (cd /opt/ros/$ROS_DISTRO/lib/python2.7/dist-packages; wget --no-check-certificate https://patch-diff.githubusercontent.com/raw/ros/ros_comm/pull/611.diff -O - | sudo patch -f -p4 || echo "ok" )
-        (cd /opt/ros/$ROS_DISTRO/lib/python2.7/dist-packages; wget --no-check-certificate https://patch-diff.githubusercontent.com/raw/ros/ros/pull/82.diff -O - | sudo patch -p4)
-        (cd /opt/ros/$ROS_DISTRO/share; wget --no-check-certificate https://patch-diff.githubusercontent.com/raw/ros/ros_comm/pull/611.diff -O - | sed s@.cmake.em@.cmake@ | sed 's@/${PROJECT_NAME}@@' | sed 's@ DEPENDENCIES ${_rostest_DEPENDENCIES})@)@' | sudo patch -f -p2 || echo "ok")
-    fi
-
-    if [ "$BUILDER" == catkin ]; then
-        source devel/setup.bash ; rospack profile # force to update ROS_PACKAGE_PATH for rostest
-        catkin run_tests --no-deps --no-status $_PKGS_DOWNSTREAM $CATKIN_PARALLEL_TEST_JOBS --make-args $ROS_PARALLEL_TEST_JOBS --
-        catkin_test_results build || error
-    fi
+    source devel/setup.bash ;
+    rospack profile # force to update ROS_PACKAGE_PATH for rostest
+    catkin run_tests --no-deps --no-status $_PKGS_DOWNSTREAM $CATKIN_PARALLEL_TEST_JOBS --make-args $ROS_PARALLEL_TEST_JOBS --
+    catkin_test_results build || error
 
     travis_time_end  # catkin_run_tests
 fi
@@ -283,9 +258,15 @@ travis_time_start after_script
 PATH=/usr/local/bin:$PATH  # for installed catkin_test_results
 PYTHONPATH=/usr/local/lib/python2.7/dist-packages:$PYTHONPATH
 if [ "${ROS_LOG_DIR// }" == "" ]; then export ROS_LOG_DIR=~/.ros/test_results; fi # http://wiki.ros.org/ROS/EnvironmentVariables#ROS_LOG_DIR
-if [ "$BUILDER" == catkin -a -e $ROS_LOG_DIR ]; then catkin_test_results --verbose --all $ROS_LOG_DIR || error; fi
-if [ "$BUILDER" == catkin -a -e ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ ]; then catkin_test_results --verbose --all ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ || error; fi
-if [ "$BUILDER" == catkin -a -e ~/.ros/test_results/ ]; then catkin_test_results --verbose --all ~/.ros/test_results/ || error; fi
+if [ -e $ROS_LOG_DIR ]; then
+    catkin_test_results --verbose --all $ROS_LOG_DIR || error;
+fi
+if [ -e ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ ]; then
+    catkin_test_results --verbose --all ~/ros/ws_$DOWNSTREAM_REPO_NAME/build/ || error;
+fi
+if [ -e ~/.ros/test_results/ ]; then
+    catkin_test_results --verbose --all ~/.ros/test_results/ || error;
+fi
 
 travis_time_end  # after_script
 
