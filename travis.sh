@@ -64,7 +64,8 @@ if [[ "$ROS_DISTRO" == "kinetic" ]] && ! [ "$IN_DOCKER" ]; then
   travis_time_start run_travissh_docker
 
   # Pull first to allow us to hide console output
-  docker pull davetcoleman/industrial_ci > /dev/null
+  #docker pull davetcoleman/industrial_ci > /dev/null
+  travis_run docker pull davetcoleman/industrial_ci
 
   # Start Docker container
   docker run \

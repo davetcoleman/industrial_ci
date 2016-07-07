@@ -134,6 +134,15 @@ function successFunction {
 }
 
 #######################################
+function travis_run() {
+  local command=$@
+
+  echo -e "\e[0Ktravis_fold:start:travis_run \e[34m$command\e[0m"
+  $command # actually run command
+  echo -e "travis_fold:end:travis_run"
+}
+
+#######################################
 function my_travis_wait() {
   local timeout=$1
 
